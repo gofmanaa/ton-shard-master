@@ -1,13 +1,13 @@
-use std::str::FromStr;
 use clap::{Parser, Subcommand};
-use tonlib::cell::{TonCellError};
-use tonlib::client::{TonClient, TonClientBuilder, TonConnectionParams};
-use tonlib::wallet::{TonWallet, WalletVersion};
 use dialoguer::{theme::ColorfulTheme, Select};
 use inline_colorization::{color_bright_green, color_green, color_red, color_reset, color_yellow};
 use spinners::{Spinner, Spinners};
+use std::str::FromStr;
 use tonlib::address::TonAddress;
+use tonlib::cell::TonCellError;
+use tonlib::client::{TonClient, TonClientBuilder, TonConnectionParams};
 use tonlib::mnemonic::{KeyPair, Mnemonic};
+use tonlib::wallet::{TonWallet, WalletVersion};
 use tonlib_shards::{get_shard, get_shards_from_network};
 
 pub const TESTNET_CONFIG: &str = include_str!("../testnet-global.config.json");
@@ -35,7 +35,6 @@ enum Commands {
     },
 }
 
-
 /// Validate shard input against predefined options
 fn validate_shard(net_shards: Vec<u64>, shard: u64) -> Result<(), String> {
     if net_shards.contains(&shard) {
@@ -43,7 +42,11 @@ fn validate_shard(net_shards: Vec<u64>, shard: u64) -> Result<(), String> {
     } else {
         Err(format!(
             "Invalid shard. Choose from: {}",
-            net_shards.iter().map(|num| format!("{:x}", num)).collect::<Vec<String>>().join(", ")
+            net_shards
+                .iter()
+                .map(|num| format!("{:x}", num))
+                .collect::<Vec<String>>()
+                .join(", ")
         ))
     }
 }
@@ -51,14 +54,12 @@ fn validate_shard(net_shards: Vec<u64>, shard: u64) -> Result<(), String> {
 /// Generate a new mnemonic
 fn generate_key_pair() -> (KeyPair, String) {
     let mut bip_mnem;
-    let tonlib_mnem ;
+    let tonlib_mnem;
     loop {
         bip_mnem = bip39::Mnemonic::generate(24).unwrap();
         tonlib_mnem = match Mnemonic::from_str(&bip_mnem.to_string(), &None) {
-            Ok(mnem) => {mnem},
-            Err(_) => {
-                continue
-            },
+            Ok(mnem) => mnem,
+            Err(_) => continue,
         };
         break;
     }
@@ -74,7 +75,6 @@ fn export_wallet_from_key_pair(key_pair: KeyPair) -> Result<TonWallet, TonCellEr
     TonWallet::derive_default(WalletVersion::V4R2, &key_pair)
 }
 
-
 #[tokio::main]
 async fn main() {
     println!("Welcome TON Shard master tool.");
@@ -83,19 +83,22 @@ async fn main() {
     TonClient::set_log_verbosity_level(0);
     let ton_client = TonClientBuilder::new()
         .with_pool_size(10)
-        .with_connection_params(&TonConnectionParams{
+        .with_connection_params(&TonConnectionParams {
             config: TESTNET_CONFIG.to_string(),
             ..Default::default()
         })
         .build()
-        .await.expect("Failed to create TonClient");
+        .await
+        .expect("Failed to create TonClient");
     let (_client, net_shards) = get_shards_from_network(ton_client).await.unwrap();
     let hex_string = net_shards
         .iter()
         .map(|num| format!("{:x}", num)) // Convert each i64 to hex
         .collect::<Vec<String>>(); // Collect into a Vec of hex strings ; // Join them with a separator (optional)
-    println!("Network shards are available (hex): {:?}", hex_string.join(", "));
-
+    println!(
+        "Network shards are available (hex): {:?}",
+        hex_string.join(", ")
+    );
 
     match cli.command {
         Commands::Generate { shard } => {
@@ -110,7 +113,7 @@ async fn main() {
                         .interact()
                         .unwrap();
                     hex_string[shard_id].clone()
-                },
+                }
             };
 
             let shard = user_shard.to_lowercase();
@@ -128,29 +131,41 @@ async fn main() {
                 let (key_pair, mnemonic_string) = generate_key_pair();
                 let wallet = export_wallet_from_key_pair(key_pair).unwrap();
 
-
-                let maby_account_shard =  get_shard(&net_shards, wallet.address.to_hex().as_str());
+                let maby_account_shard = get_shard(&net_shards, wallet.address.to_hex().as_str());
                 if let Some(account_shard) = maby_account_shard {
                     if account_shard == shard {
                         println!("Save this information for later use:");
                         println!("{color_green}Shard is FOUND <:). account_shard: {:x?}, expected: {:x?}{color_reset}", account_shard, shard);
-                        println!("Wallet address: {color_yellow}{:?}{color_reset}", wallet.address);
-                        println!("Wallet address(HEX): {color_yellow}{:?}{color_reset}", wallet.address.to_hex());
-                        println!("Account mnemonic: {color_bright_green}{:?}{color_reset}", mnemonic_string);
+                        println!(
+                            "Wallet address: {color_yellow}{:?}{color_reset}",
+                            wallet.address
+                        );
+
+                        println!("Wallet address (bounceable, production): {color_yellow}{:?}{color_reset}", wallet.address.to_base64_url_flags(false, false));
+                        println!("Wallet address (non bounceable, production): {color_yellow}{:?}{color_reset}", wallet.address.to_base64_url_flags(true, false));
+                        println!("Wallet address (bounceable, non production): {color_yellow}{:?}{color_reset}", wallet.address.to_base64_url_flags(false, true));
+                        println!("Wallet address (non bounceable, non production): {color_yellow}{:?}{color_reset}", wallet.address.to_base64_url_flags(true, true));
+
+                        println!(
+                            "Wallet address(HEX): {color_yellow}{:?}{color_reset}",
+                            wallet.address.to_hex()
+                        );
+                        println!(
+                            "Account mnemonic: {color_bright_green}{:?}{color_reset}",
+                            mnemonic_string
+                        );
                         sp.stop_with_newline();
 
                         break;
                     } else {
                         println!("{color_red}Shard is not equal to assigned shard, got: {:x?}, expect: {:x?}{color_reset}", account_shard, shard);
                     }
-
                 } else {
                     println!("Shard is not found");
                 }
             }
 
             println!("Elapsed time: {:?}", start_time.elapsed());
-
         }
         Commands::Shard { address } => {
             let ton_address = TonAddress::from_str(&address).unwrap();
